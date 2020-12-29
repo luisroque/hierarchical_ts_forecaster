@@ -82,3 +82,20 @@ def calculate_metrics(pred_samples,
     rmse_['all'] = np.round(mean_squared_error(y_all[n-h:n,:], f_all, squared=False), 3)
     
     return mase_, rmse_
+
+def metrics_to_table(groups, metrics):
+    metrics_l = []
+    metrics_v = []
+    for metric_name in metrics:
+        metrics_list=[]
+        metrics_values=[]
+        metrics_list.append('')
+        metrics_values.append(metric_name)
+        for key, metric in metrics[metric_name].items():
+            metrics_list.append(key)
+            metrics_values.append(metric)
+        metrics_v.append(metrics_values)
+    metrics_l.append(metrics_list)
+    metrics_l.extend(metrics_v)
+    table = metrics_l
+    display(HTML(tabulate.tabulate(table, tablefmt='html')))
