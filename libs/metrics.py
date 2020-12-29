@@ -51,23 +51,22 @@ def calculate_metrics(pred_samples,
                                              squared=False), 3)
 
     # Groups
+    idx_dict_new = {}
     for group in list(groups['predict']['groups_names'].keys()):
-        g_n = groups['predict']['groups_n'][group]
-
-        idx_dict_new[name] = np.where(groups['predict']['groups_idx'][group]==idx,1,0)
-
-        n = groups['predict']['n']
-        s = groups['predict']['s']
-
         y_g = np.zeros((groups['predict']['n'], groups['predict']['groups_names'][group].shape[0]))
         f_g = np.zeros((8, groups['predict']['groups_names'][group].shape[0]))
 
-        for i, g in enumerate(groups['predict']['groups_names'][group]):               
-            y_g[:,i] = np.sum(idx_dict_new[g].reshape(s, n).T*y_f, axis=1)
-            f_g[:,i] = np.sum(idx_dict_new[g].reshape(s, n).T*np.mean(m.pred_samples_predict['y_pred_new'], axis=0).reshape(s, n).T, axis=1)[n-h:n]
+        for idx, name in enumerate(groups['predict']['groups_names'][group]):               
+
+            g_n = groups['predict']['groups_n'][group]
+
+            idx_dict_new[name] = np.where(groups['predict']['groups_idx'][group]==idx,1,0)
+
+            y_g[:,idx] = np.sum(idx_dict_new[name].reshape(s, n).T*y_f, axis=1)
+            f_g[:,idx] = np.sum(idx_dict_new[name].reshape(s, n).T*np.mean(m.pred_samples_predict['y_pred_new'], axis=0).reshape(s, n).T, axis=1)[n-h:n]
 
         y_all_g[group] = np.sum(y_g, axis=1).reshape(-1,1)
-        f_all_g[group] = np.mean(f_g, axis=1).reshape(-1,1)
+        f_all_g[group] = np.sum(f_g, axis=1).reshape(-1,1)
 
         mase_[group] = np.round(mase(n=n-h, 
                                      seas=seasonality, 
@@ -75,7 +74,7 @@ def calculate_metrics(pred_samples,
                                      y=y_g, 
                                      f=f_g)
                                 ,3)
-        
+
         rmse_[group] = np.round(mean_squared_error(y_g[n-h:n,:], f_g, squared=False), 3)
 
     # All
@@ -93,7 +92,7 @@ def calculate_metrics(pred_samples,
     results['mase'] = mase_
     results['rmse'] = rmse_
     return results
-
+    
 
 def metrics_to_table(groups, metrics):
     metrics_l = []
