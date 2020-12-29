@@ -63,7 +63,7 @@ def calculate_metrics(pred_samples,
             idx_dict_new[name] = np.where(groups['predict']['groups_idx'][group]==idx,1,0)
 
             y_g[:,idx] = np.sum(idx_dict_new[name].reshape(s, n).T*y_f, axis=1)
-            f_g[:,idx] = np.sum(idx_dict_new[name].reshape(s, n).T*np.mean(m.pred_samples_predict['y_pred_new'], axis=0).reshape(s, n).T, axis=1)[n-h:n]
+            f_g[:,idx] = np.sum(idx_dict_new[name].reshape(s, n).T*np.mean(pred_samples['y_pred_new'], axis=0).reshape(s, n).T, axis=1)[n-h:n]
 
         y_all_g[group] = np.sum(y_g, axis=1).reshape(-1,1)
         f_all_g[group] = np.sum(f_g, axis=1).reshape(-1,1)
@@ -92,7 +92,7 @@ def calculate_metrics(pred_samples,
     results['mase'] = mase_
     results['rmse'] = rmse_
     return results
-    
+
 
 def metrics_to_table(groups, metrics):
     metrics_l = []
