@@ -1,16 +1,20 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import tabulate
+from sklearn.metrics import mean_squared_error
+from IPython.display import HTML, display
+
 
 def mase(n,seas,h,y,f):
     return np.mean(((n-seas)/h
             * (np.sum(np.abs(y[n:n+h,:] - f), axis=0)
                / np.sum(np.abs(y[seas:n, :] - y[:n-seas, :]), axis=0))))
 
+
 def calculate_metrics(pred_samples,
-                      groups,
-                      seasonality,
-                      h):
+                      groups):
+
+    seasonality = groups['seasonality']
+    h = groups['h']
     
     n = groups['predict']['n']
     s = groups['predict']['s']
@@ -85,7 +89,11 @@ def calculate_metrics(pred_samples,
                          f=f_all),3)
     rmse_['all'] = np.round(mean_squared_error(y_all[n-h:n,:], f_all, squared=False), 3)
     
-    return mase_, rmse_
+    results = {}
+    results['mase'] = mase_
+    results['rmse'] = rmse_
+    return results
+
 
 def metrics_to_table(groups, metrics):
     metrics_l = []

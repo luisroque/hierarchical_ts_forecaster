@@ -1,3 +1,6 @@
+import matplotlib.pyplot as plt
+import numpy as np
+
 def visualize_fit(groups, pred_samples_fit, n_series_to_show):
     assert n_series_to_show%2 == 0, "'n_series_to_show' must be an integer even number"
     fig, ax = plt.subplots(int(n_series_to_show/2), 2, figsize=(12,n_series_to_show*2))
