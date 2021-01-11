@@ -9,7 +9,7 @@ tourism_gts <- tourism %>%
   aggregate_key((State / Zone / Region) * Purpose, Count = sum(Count))
 
 fit <- tourism_gts %>%
-  filter(YearMonth <= yearmonth(as.Date("2015-02-01"))) %>%
+  filter(YearMonth <= yearmonth(as.Date("2014-12-31"))) %>%
   model(base = ETS(Count)) %>%
   reconcile(
     bottom_up = bottom_up(base),

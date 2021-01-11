@@ -2,6 +2,7 @@ import numpy as np
 import tabulate
 from sklearn.metrics import mean_squared_error
 from IPython.display import HTML, display
+import pandas as pd
 
 
 def mase(n,seas,h,y,f):
@@ -54,7 +55,7 @@ def calculate_metrics(pred_samples,
     idx_dict_new = {}
     for group in list(groups['predict']['groups_names'].keys()):
         y_g = np.zeros((groups['predict']['n'], groups['predict']['groups_names'][group].shape[0]))
-        f_g = np.zeros((8, groups['predict']['groups_names'][group].shape[0]))
+        f_g = np.zeros((h, groups['predict']['groups_names'][group].shape[0]))
 
         for idx, name in enumerate(groups['predict']['groups_names'][group]):               
 
@@ -110,3 +111,30 @@ def metrics_to_table(groups, metrics):
     metrics_l.extend(metrics_v)
     table = metrics_l
     display(HTML(tabulate.tabulate(table, tablefmt='html')))
+
+
+def metrics_to_latex(groups, metrics):
+    metrics_l = []
+    metrics_v = []
+    for metric_name in metrics:
+        metrics_list=[]
+        metrics_values=[]
+        metrics_list.append('')
+        metrics_values.append(metric_name)
+        for key, metric in metrics[metric_name].items():
+            metrics_list.append(key)
+            metrics_values.append(metric)
+        metrics_v.append(metrics_values)
+    metrics_l.append(metrics_list)
+    metrics_l.extend(metrics_v)
+    df = pd.DataFrame(metrics_l[1:])
+    columns = []
+    columns.append('Metrics')
+    for i in metrics_l[0][1:]:
+        columns.append(i)
+    df.columns = columns
+    df['Model'] = 'HLGP'
+    cols = df.columns.tolist()
+    cols = cols[-1:] + cols[:-1]
+    df = df[cols]
+    return print(df.to_latex(escape=True, index=False))
