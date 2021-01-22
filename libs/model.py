@@ -16,6 +16,7 @@ Features:
     mean GP function is just constant 
 4. Option to define a piecewise function for the GP mean and respective
     selection of the number of changepoints
+5. Option to use MAP or VI to estimate the parameter values (VI is advised)
 '''
 
 
@@ -96,6 +97,8 @@ class HGPforecaster:
         self.changepoints = changepoints
         self.reverting_trend = reverting_trend
         self.n_iterations = n_iterations
+        self.trace_vi = None
+        self.pred_samples_fit = None
         if levels:
             self.levels = levels
         else:
@@ -180,15 +183,15 @@ class HGPforecaster:
                         shape = self.g['train']['groups_n'][group])
                     self.priors["eta_t_%s" %group] = pm.HalfNormal(
                         'eta_t_%s' %group, 
-                        1,
+                        0.2,
                         shape = self.g['train']['groups_n'][group])
                     self.priors["eta_p_%s" %group] = pm.HalfNormal(
                         'eta_p_%s' %group, 
-                        1.5,
+                        0.2,
                         shape = self.g['train']['groups_n'][group])
                     self.priors["sigma_%s" %group] = pm.HalfNormal(
                         'sigma_%s' %group, 
-                        0.05,
+                        0.01,
                         shape = self.g['train']['groups_n'][group])
 
 
@@ -279,7 +282,7 @@ class HGPforecaster:
         with self.model:
             self.y_pred = pm.Poisson('y_pred', mu=tt.exp(self.f + self.priors["a0"][self.g['train']['n_series_idx']]), observed=self.g['train']['data'])
 
-    def fit(self):
+    def fit_map(self):
         self.likelihood()
         with self.model:
             print('Fitting model...')
@@ -288,6 +291,17 @@ class HGPforecaster:
             self.pred_samples_fit = pm.sample_posterior_predictive([self.mp], 
                                                   vars=[self.y_pred], 
                                                   samples=500)
+            
+    def fit_vi(self):
+        self.likelihood()
+        with self.model:
+            print('Fitting model...')
+            self.trace_vi = pm.fit(self.n_iterations)
+            print('Sampling...')
+            self.trace_vi_samples = self.trace_vi.sample()
+            self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples, 
+                                      vars=[self.y_pred], 
+                                      samples=500)
 
     def predict(self):
         f_new = {}
@@ -310,6 +324,13 @@ class HGPforecaster:
                             mu=tt.exp(f_ + self.priors["a0"][self.g['predict']['n_series_idx']]), 
                             shape=n_new * self.g['predict']['s'])
             print('Sampling...')
-            self.pred_samples_predict = pm.sample_posterior_predictive([self.mp], 
-                                          vars=[y_pred_new], 
-                                          samples=500)
+            if self.pred_samples_fit:
+                # Sampling using trace from VI
+                self.pred_samples_predict = pm.sample_posterior_predictive(self.trace_vi_samples, 
+                                              vars=[y_pred_new], 
+                                              samples=500)
+            else:
+                # Sampling using points from MAP
+                self.pred_samples_predict = pm.sample_posterior_predictive([self.mp], 
+                              vars=[y_pred_new], 
+                              samples=500)
