@@ -1,6 +1,7 @@
 import pymc3 as pm
 import theano.tensor as tt
 import numpy as np
+from libs.pre_processing import generate_groups_data_matrix_minibatch
 
 '''
 Features:
@@ -10,13 +11,10 @@ Features:
     nested in the hierarchies but can boost performance
 2. The seasonality to consider (i.e. the periodic 
     kernel defined for the cov function of the GP)
-3. Considering a more complex kernel structure of the GPs
-    (long trend, seasonality, noise) -> (long trend, short trend, seasonality, noise),
-    removing the need to have a trend specified in the mean of the GP -
-    mean GP function is just constant 
-4. Option to define a piecewise function for the GP mean and respective
+3. Option to define a piecewise function for the GP mean and respective
     selection of the number of changepoints
-5. Option to use MAP or VI to estimate the parameter values (VI is advised)
+4. Option to use MAP or VI to estimate the parameter values (VI is advised)
+5. Possibility to use Minibatch that ensures scalability of the model
 '''
 
 
@@ -68,22 +66,21 @@ class HGPforecaster:
                 horizon
     levels: list
                 levels to be used in the estimation (default uses all levels)
-    reverting_trend: bool
-                if true, the trend is estimating and added to the GP mean, which
-                ultimately results in long term reverting value of the GP.
-                If false, the trend is estimated in the GP cov with a new kernel added to it
-                (long trend, seasonality, noise) -> (long trend, short trend, seasonality, noise) 
     changepoints: int
                 define a piecewise function as the mean of the GPs based on the number of 
                 changepoints defined by the user (uniformly distributed across time)
+    n_iterations: int
+                number of iterations to run on the optimization (MAP or VI)
+    minibatch: list[n_points, n_series]
+                list with number of points and number of series to consider
     """
     def __init__(
         self,
         groups_data,
         levels=None,
-        reverting_trend=False,
         changepoints=None,
-        n_iterations=5000
+        n_iterations=10000,
+        minibatch=None
     ):
         self.model = pm.Model()
         self.priors = {}
@@ -95,7 +92,6 @@ class HGPforecaster:
         self.pred_samples_predict=None
         self.season = self.g['seasonality']
         self.changepoints = changepoints
-        self.reverting_trend = reverting_trend
         self.n_iterations = n_iterations
         self.trace_vi = None
         self.pred_samples_fit = None
@@ -104,27 +100,26 @@ class HGPforecaster:
         else:
             self.levels = list(self.g['train']['groups_names'].keys())
 
-        if isinstance(reverting_trend, (bool)):
-            self.reverting_trend = reverting_trend
-        else:
-            raise Exception("reverting_trend should be of type bool")
-        
+        if minibatch:
+            self.minibatch = minibatch
+            self.g, self.X_mi = generate_groups_data_matrix_minibatch(self.g, self.minibatch[0], self.minibatch[1])
+
         self.X = np.arange(self.g['train']['n']).reshape(-1,1)
 
     def generate_priors(self):
         """Set up the priors for the model."""
         with self.model:
 
-            #mean_idx = np.zeros((self.g['train']['s'],))
-            #for idx in self.g['train']['n_series']:
-            #    # Define one parameter for the mean informed by the mean of the series training data
-            #    series_values = (self.g['train']['data'] * (np.where(self.g['train']['n_series_idx']==idx,1,0)))
-            #    mean_idx[idx] = np.true_divide(series_values.sum(),(series_values!=0).sum())
+            if self.minibatch:
+                self.series = self.g['train']['n_series_idx'].eval()
+            else:
+                self.series = self.g['train']['n_series_idx']
+
             self.priors["a0"] = pm.Normal(
                 "a0", 
-                mu=0.0, 
-                sd=5, 
-                shape = self.g['train']['s'])
+                mu=tt.log(np.mean(self.g['train']['full_data'][:,self.series], axis=0)), 
+                sd=0.1, 
+                shape = self.minibatch[1])
 
             # prior for the periodic kernel (seasonality)
             self.priors["period"] = pm.Laplace(
@@ -133,91 +128,66 @@ class HGPforecaster:
             for group in self.levels:
                 # priors for the kernels of each group
 
-                if self.reverting_trend:
-                    # The inverse gamma is very useful to inform our prior dist of the length scale
-                    # because it supresses both zero and infinity.
-                    # The data don't inform length scales larger than the maximum covariate distance 
-                    # and shorter than the minimum covariate distance (distance between time points which 
-                    # is always 1 in our case).
-                    self.priors["l_t_%s" %group] = pm.InverseGamma(
-                        'l_t_%s' %group, 
-                        4, 
-                        self.g['train']['n'], 
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["l_p_%s" %group] = pm.InverseGamma(
-                        'l_p_%s' %group, 
-                        4, 
-                        self.g['train']['n'], 
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["eta_t_%s" %group] = pm.HalfNormal(
-                        'eta_t_%s' %group, 
-                        0.5,
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["eta_p_%s" %group] = pm.HalfNormal(
-                        'eta_p_%s' %group, 
-                        1,
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["sigma_%s" %group] = pm.HalfNormal(
-                        'sigma_%s' %group, 
-                        0.01,
-                        shape = self.g['train']['groups_n'][group])
-                else:
-                    self.priors["l_t_%s" %group] = pm.InverseGamma(
-                        'l_t_%s' %group, 
-                        4, 
-                        self.g['train']['n'], 
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["l_ts_%s" %group] = pm.Gamma(
-                        'l_ts_%s' %group, 
-                        5, 
-                        1, 
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["l_p_%s" %group] = pm.InverseGamma(
-                        'l_p_%s' %group, 
-                        4, 
-                        self.g['train']['n'], 
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["eta_ts_%s" %group] = pm.HalfNormal(
-                        'eta_ts_%s' %group, 
-                        0.2,
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["eta_t_%s" %group] = pm.HalfNormal(
-                        'eta_t_%s' %group, 
-                        0.2,
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["eta_p_%s" %group] = pm.HalfNormal(
-                        'eta_p_%s' %group, 
-                        0.2,
-                        shape = self.g['train']['groups_n'][group])
-                    self.priors["sigma_%s" %group] = pm.HalfNormal(
-                        'sigma_%s' %group, 
-                        0.01,
-                        shape = self.g['train']['groups_n'][group])
-
-
-                # Priors for hyperparamters
-                self.priors["hy_b_%s" %group] = pm.Normal(
-                    "hy_b_%s" %group, 
-                    mu=0.0, 
-                    sd=0.5)
-                self.priors["hy_a_%s" %group] = pm.Normal(
-                    "hy_a_%s" %group, 
-                    mu=0.0, 
-                    sd=5.)
-
-                # priors for the group effects
-                self.priors["b_%s" %group] = pm.Normal(
-                    'b_%s' %group, 
-                    self.priors["hy_b_%s" %group],
+                # The inverse gamma is very useful to inform our prior dist of the length scale
+                # because it supresses both zero and infinity.
+                # The data don't inform length scales larger than the maximum covariate distance 
+                # and shorter than the minimum covariate distance (distance between time points which 
+                # is always 1 in our case).
+                self.priors["l_t_%s" %group] = pm.InverseGamma(
+                    'l_t_%s' %group, 
+                    4, 
+                    self.g['train']['n']/4, 
+                    shape = self.g['train']['groups_n'][group])
+                self.priors["l_p_%s" %group] = pm.InverseGamma(
+                    'l_p_%s' %group, 
+                    4, 
+                    self.g['train']['n'], 
+                    shape = self.g['train']['groups_n'][group])
+                self.priors["c_%s" %group] = pm.Normal(
+                    'c_%s' %group, 
+                    0, 
+                    0.05, 
+                    shape = self.g['train']['groups_n'][group])
+                self.priors["eta_t_%s" %group] = pm.HalfNormal(
+                    'eta_t_%s' %group, 
                     0.1,
                     shape = self.g['train']['groups_n'][group])
-                self.priors["a_%s" %group] = pm.Normal(
-                    'a_%s' %group, 
-                    self.priors["hy_a_%s" %group],
-                    1,
+                self.priors["eta_p_%s" %group] = pm.HalfNormal(
+                    'eta_p_%s' %group, 
+                    0.2,
                     shape = self.g['train']['groups_n'][group])
-                
+                self.priors["eta_l_%s" %group] = pm.HalfNormal(
+                    'eta_l_%s' %group, 
+                    0.01,
+                    shape = self.g['train']['groups_n'][group])
+                self.priors["sigma_%s" %group] = pm.HalfNormal(
+                    'sigma_%s' %group, 
+                    0.02,
+                    shape = self.g['train']['groups_n'][group])
+
+
                 if self.changepoints:
+                    # Priors for hyperparamters
+                    self.priors["hy_b_%s" %group] = pm.Normal(
+                        "hy_b_%s" %group, 
+                        mu=0.0, 
+                        sd=0.5)
+                    self.priors["hy_a_%s" %group] = pm.Normal(
+                        "hy_a_%s" %group, 
+                        mu=0.0, 
+                        sd=5.)
+
+                    # priors for the group effects
+                    self.priors["b_%s" %group] = pm.Normal(
+                        'b_%s' %group, 
+                        self.priors["hy_b_%s" %group],
+                        0.1,
+                        shape = self.g['train']['groups_n'][group])
+                    self.priors["a_%s" %group] = pm.Normal(
+                        'a_%s' %group, 
+                        self.priors["hy_a_%s" %group],
+                        1,
+                        shape = self.g['train']['groups_n'][group])
                     self.priors["k_%s" %group] = pm.Normal(
                         'k_%s' %group, 
                         0.0,
@@ -245,7 +215,7 @@ class HGPforecaster:
 
                     # index varible that indicates where a specific GP is active
                     # for instance, GP_fem is only active in fem time series
-                    idx_dict[name] = np.where(self.g['train']['groups_idx'][group]==idx,1,0)
+                    idx_dict[name] = np.where(self.g['train']['groups_idx'][group].eval()==idx,1,0)
 
                     # mean function for the GP with specific parameters per group
                     if self.changepoints:
@@ -255,32 +225,39 @@ class HGPforecaster:
                                                               k = self.priors["k_%s" %group][idx],
                                                               m = self.priors["m_%s" %group][idx])
                     else:
-                        if self.reverting_trend:   
-                            mu_func = pm.gp.mean.Linear(intercept = self.priors["a_%s" %group][idx],
-                                                coeffs = self.priors["b_%s" %group][idx])
-                            # cov function for the GP with specific parameters per group
-                            cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])
-                                    + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
-                                    + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))  
-                        else:
-                            mu_func = pm.gp.mean.Constant(self.priors["a_%s" %group][idx])   
-                            # cov function for the GP with specific parameters per group
-                            cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])
-                                    + self.priors["eta_ts_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_ts_%s" %group][idx])
-                                    + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
-                                    + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
+                        #mu_func = pm.gp.mean.Constant(self.priors["a_%s" %group][idx])   
+                        # cov function for the GP with specific parameters per group
+                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])
+                                + self.priors["eta_l_%s" %group][idx]**2 * pm.gp.cov.Linear(input_dim=1, c=self.priors["c_%s" %group][idx])
+                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
+                                + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
 
-                    self.gp_dict[name] = pm.gp.Latent(mean_func=mu_func, cov_func=cov)
-                    f_dict[name] = self.gp_dict[name].prior('f_%s' % name, X=self.X, reparameterize=True)
-                    f_flat[name] = tt.tile(f_dict[name], (self.g['train']['s'],)) * idx_dict[name]
+                    if self.minibatch:
+                        self.gp_dict[name] = pm.gp.Latent(mean_func=pm.gp.mean.Zero(), cov_func=cov)
+                        f_dict[name] = self.gp_dict[name].prior('f_%s' % name, X=self.X_mi, reparameterize=True, shape = self.minibatch[0])
+                        f_flat[name] = f_dict[name].reshape((-1,1)) * idx_dict[name].reshape((1,-1))
+                    else:
+                        self.gp_dict[name] = pm.gp.Latent(mean_func=pm.gp.mean.Zero(), cov_func=cov)
+                        f_dict[name] = self.gp_dict[name].prior('f_%s' % name, X=self.X, reparameterize=True)
+                        f_flat[name] = f_dict[name].reshape((-1,1)) * idx_dict[name].reshape((1,-1))
 
             self.f = sum(f_flat.values())
         
     def likelihood(self):
         self.generate_GPs()
 
-        with self.model:
-            self.y_pred = pm.Poisson('y_pred', mu=tt.exp(self.f + self.priors["a0"][self.g['train']['n_series_idx']]), observed=self.g['train']['data'])
+        if self.minibatch:
+            with self.model:
+                self.y_pred = pm.Poisson('y_pred', 
+                mu=tt.exp(self.f + self.priors['a0']), 
+                observed=self.g['train']['data'], 
+                total_size=(self.g['train']['n'],self.g['train']['s']))
+        else:
+            with self.model:
+                self.y_pred = pm.Poisson('y_pred', 
+                mu=tt.exp(self.f + self.priors['a0']), 
+                observed=self.g['train']['data'])
+
 
     def fit_map(self):
         self.likelihood()
@@ -299,9 +276,9 @@ class HGPforecaster:
             self.trace_vi = pm.fit(self.n_iterations)
             print('Sampling...')
             self.trace_vi_samples = self.trace_vi.sample()
-            self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples, 
-                                      vars=[self.y_pred], 
+            self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples,
                                       samples=500)
+
 
     def predict(self):
         f_new = {}
@@ -314,17 +291,17 @@ class HGPforecaster:
         with self.model:
             for group in self.levels:
                 for idx, name in enumerate(self.g['predict']['groups_names'][group]):
-                    idx_dict_new[name] = np.where(self.g['predict']['groups_idx'][group]==idx,1,0)
+                    idx_dict_new[name] = np.where(self.g['predict']['groups_idx'][group].eval()==idx,1,0)
                     f_new[name] = self.gp_dict[name].conditional('f_new%s'%name, Xnew = X_new)
-                    f_flat_new[name] = tt.tile(f_new[name], (self.g['predict']['s'],)) * idx_dict_new[name]
+                    f_flat_new[name] = f_new[name].reshape((-1,1)) * idx_dict_new[name].reshape((1,-1))
 
             f_ = sum(f_flat_new.values())
     
             y_pred_new = pm.Poisson("y_pred_new", 
-                            mu=tt.exp(f_ + self.priors["a0"][self.g['predict']['n_series_idx']]), 
-                            shape=n_new * self.g['predict']['s'])
+                            mu=tt.exp(f_ + self.priors['a0']), 
+                            shape=(n_new, self.g['predict']['s']))
             print('Sampling...')
-            if self.pred_samples_fit:
+            if self.trace_vi_samples:
                 # Sampling using trace from VI
                 self.pred_samples_predict = pm.sample_posterior_predictive(self.trace_vi_samples, 
                                               vars=[y_pred_new], 
