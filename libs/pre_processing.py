@@ -52,7 +52,6 @@ def generate_groups_data_flat(y,
         groups[i]['g_number'] = len(groups_input)
 
         groups[i]['data'] = y_.values.T.ravel()
-        groups[i]['full_data'] = y_.values.T.ravel()
 
     groups['seasonality'] = seasonality
     groups['h'] = h
@@ -74,10 +73,12 @@ def generate_groups_data_matrix(groups):
     groups['train']['groups_idx']['state'] = groups['train']['groups_idx']['state'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
     groups['train']['groups_idx']['gender'] = groups['train']['groups_idx']['gender'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
     groups['train']['groups_idx']['legal'] = groups['train']['groups_idx']['legal'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
+    groups['train']['full_data'] = groups['train']['data'].reshape(groups['train']['s'], groups['train']['n']).T
     groups['train']['data'] = groups['train']['data'].reshape(groups['train']['s'], groups['train']['n']).T
-    groups['train']['full_data'] = groups['train']['full_data'].reshape(groups['train']['s'], groups['train']['n']).T
 
+    groups['train']['n_series_idx_full'] = groups['train']['n_series_idx'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
     groups['train']['n_series_idx'] = groups['train']['n_series_idx'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
+
     groups['predict']['groups_idx']['state'] = groups['predict']['groups_idx']['state'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
     groups['predict']['groups_idx']['gender'] = groups['predict']['groups_idx']['gender'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
     groups['predict']['groups_idx']['legal'] = groups['predict']['groups_idx']['legal'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
@@ -97,10 +98,6 @@ def generate_groups_data_matrix_minibatch(groups,
     groups['train']['groups_idx']['gender'] =pm.Minibatch(groups['train']['groups_idx']['gender'], s_mi)
     groups['train']['groups_idx']['legal'] = pm.Minibatch(groups['train']['groups_idx']['legal'], s_mi)
     groups['train']['data'] = pm.Minibatch(groups['train']['data'], ((n_mi,s_mi)))
-    
-    groups['predict']['groups_idx']['state'] = pm.Minibatch(groups['predict']['groups_idx']['state'], s_mi)
-    groups['predict']['groups_idx']['gender'] = pm.Minibatch(groups['predict']['groups_idx']['gender'], s_mi)
-    groups['predict']['groups_idx']['legal'] = pm.Minibatch(groups['predict']['groups_idx']['legal'], s_mi)
     
     X = np.arange(groups['train']['n']).reshape(-1,1)
     X_mi = pm.Minibatch(X.ravel(), n_mi).reshape((-1,1))
