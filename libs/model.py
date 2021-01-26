@@ -177,10 +177,14 @@ class HGPforecaster:
                     shape = self.g['train']['groups_n'][group])
 
                 if self.log_lin_mean:
+                    self.priors["hy_b_%s" %group] = pm.Normal(
+                        "hy_b_%s" %group, 
+                        mu=0.0, 
+                        sd=1.)
                     self.priors["b_%s" %group] = pm.Normal(
                         'b_%s' %group, 
-                        0.0,
-                        1.,
+                        self.priors["hy_b_%s" %group],
+                        0.01,
                         shape = self.g['train']['groups_n'][group])
                 elif self.changepoints:
                     # Priors for hyperparamters
