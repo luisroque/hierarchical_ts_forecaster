@@ -116,4 +116,4 @@ def visualize_predict(groups, pred_samples_predict, n_bottom_series_to_show, lev
             j+=1
 
 def traceplot(trace):
-    pm.traceplot(trace, var_names=['~f_'], filter_vars="like")
+    return pm.traceplot(trace, var_names=['~f_'], filter_vars="like")
