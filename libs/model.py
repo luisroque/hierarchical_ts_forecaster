@@ -25,7 +25,8 @@ class LogLinear(pm.gp.mean.Mean):
         self.b = b
 
     def __call__(self, X):
-        return tt.squeeze(tt.log(tt.dot(X, self.b) + self.a +1))
+        # Log linear mean function -> adding 1 to avoid inf when X = 0
+        return tt.squeeze(tt.dot(tt.log(X+1), self.b) + self.a)
 
 
 class PiecewiseLinearChangepoints(pm.gp.mean.Mean):
@@ -179,7 +180,7 @@ class HGPforecaster:
                     self.priors["b_%s" %group] = pm.Normal(
                         'b_%s' %group, 
                         0.0,
-                        0.1,
+                        1.,
                         shape = self.g['train']['groups_n'][group])
                 elif self.changepoints:
                     # Priors for hyperparamters
@@ -240,20 +241,23 @@ class HGPforecaster:
                 for idx, name in enumerate(self.g['train']['groups_names'][group]):
 
                     # mean function for the GP with specific parameters per group
-                    if self.changepoints:
+
+                    if self.log_lin_mean:
+                        mu_func = LogLinear(b = self.priors["b_%s" %group][idx])
+                        
+                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                
+                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
+                                + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
+
+                    elif self.changepoints:
                         mu_func = PiecewiseLinearChangepoints(intercept = self.priors["a_%s" %group][idx],
                                                               b = self.priors["b_%s" %group][idx],
                                                               changepoints = self.changepoints,
                                                               k = self.priors["k_%s" %group][idx],
                                                               m = self.priors["m_%s" %group][idx])
 
-                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
-                                + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
-
-                    elif self.log_lin_mean:
-                        mu_func = LogLinear(b = self.priors["b_%s" %group][idx])
-                        
-                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
+                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                
+                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
                                 + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
 
                     else:
