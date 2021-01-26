@@ -20,14 +20,24 @@ Features:
 '''
 
 class LogLinear(pm.gp.mean.Mean):
+    # Log linear mean function to get diminishing returns on the mean 
+    # -> adding 1 to avoid inf when X = 0
     def __init__(self, b, a=0):
         self.a = a
         self.b = b
 
     def __call__(self, X):
-        # Log linear mean function -> adding 1 to avoid inf when X = 0
         return tt.squeeze(tt.dot(tt.log(X+1), self.b) + self.a)
 
+class Linear(pm.gp.mean.Mean):
+    # This linear function with a log-link function results in an 
+    # exponential mean 
+    def __init__(self, b, a=0):
+        self.a = a
+        self.b = b
+
+    def __call__(self, X):
+        return tt.squeeze(tt.dot(X, self.b) + self.a)
 
 class PiecewiseLinearChangepoints(pm.gp.mean.Mean):
     def __init__(self, 
@@ -138,7 +148,7 @@ class HGPforecaster:
             self.priors["a0"] = pm.Normal(
                 "a0", 
                 mu=tt.log(np.mean(self.g['train']['full_data'][:,self.series_full], axis=0)), 
-                sd=0.1, 
+                sd=0.2, 
                 shape = self.g['train']['s']) 
 
             # prior for the periodic kernel (seasonality)
@@ -165,26 +175,26 @@ class HGPforecaster:
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_t_%s" %group] = pm.HalfNormal(
                     'eta_t_%s' %group, 
-                    0.1,
+                    0.02,
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_p_%s" %group] = pm.HalfNormal(
                     'eta_p_%s' %group, 
-                    0.2,
+                    0.04,
                     shape = self.g['train']['groups_n'][group])
                 self.priors["sigma_%s" %group] = pm.HalfNormal(
                     'sigma_%s' %group, 
-                    0.02,
+                    0.005,
                     shape = self.g['train']['groups_n'][group])
 
                 if self.log_lin_mean:
                     self.priors["hy_b_%s" %group] = pm.Normal(
                         "hy_b_%s" %group, 
                         mu=0.0, 
-                        sd=1.)
+                        sd=0.01)
                     self.priors["b_%s" %group] = pm.Normal(
                         'b_%s' %group, 
                         self.priors["hy_b_%s" %group],
-                        0.1,
+                        0.005,
                         shape = self.g['train']['groups_n'][group])
                 elif self.changepoints:
                     # Priors for hyperparamters
@@ -247,7 +257,7 @@ class HGPforecaster:
                     # mean function for the GP with specific parameters per group
 
                     if self.log_lin_mean:
-                        mu_func = LogLinear(b = self.priors["b_%s" %group][idx])
+                        mu_func = Linear(b = self.priors["b_%s" %group][idx])
                         
                         cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
@@ -292,7 +302,9 @@ class HGPforecaster:
             self.f = sum(f_flat.values())
         
     def likelihood(self):
-        self.generate_GPs()
+        # Avoid generating priors if already created
+        if not self.priors:
+            self.generate_GPs()
 
         if self.minibatch:
             with self.model:
@@ -306,6 +318,21 @@ class HGPforecaster:
                                         mu=tt.exp(self.f + self.priors['a0'].reshape((1,-1))), 
                                         observed=self.g['train']['data'])
 
+    def prior_predictive_checks(self):
+        # Avoid generating priors if already created
+        if not self.priors:
+            self.generate_GPs()
+        
+        # If the likelihood was created in the model,
+        # a new model has to be intantiated, otherwise
+        # we cannot sample prior predictive
+        if self.y_pred:
+            self.model = pm.Model()
+            self.generate_GPs()
+
+        with self.model:
+            f_ = pm.Deterministic('f_', tt.exp(self.f + self.priors['a0'].reshape((1,-1))))
+            self.prior_checks = pm.sample_prior_predictive(200)
 
     def fit_map(self):
         self.likelihood()
