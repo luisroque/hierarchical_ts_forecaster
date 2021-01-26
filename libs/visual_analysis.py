@@ -75,7 +75,7 @@ def visualize_predict(groups, pred_samples_predict, n_bottom_series_to_show, lev
                     idx_dict_new[name] = np.where(groups['predict']['groups_idx'][group]==idx,1,0)
 
                     y_g = np.sum(idx_dict_new[name].reshape(1,-1)*y_f, axis=1)
-                    f_g = np.sum(idx_dict_new[name].reshape(1,-1)*pred_samples_predict['y_pred_new'], axis=(2))
+                    f_g = np.sum(idx_dict_new[name].reshape(1,-1)*pred_samples_predict, axis=(2))
                     
                     y_all_g[group][name] = y_g
                     f_all_g[group][name] = f_g
