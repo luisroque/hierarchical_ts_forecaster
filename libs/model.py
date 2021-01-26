@@ -184,7 +184,7 @@ class HGPforecaster:
                     self.priors["b_%s" %group] = pm.Normal(
                         'b_%s' %group, 
                         self.priors["hy_b_%s" %group],
-                        0.01,
+                        0.1,
                         shape = self.g['train']['groups_n'][group])
                 elif self.changepoints:
                     # Priors for hyperparamters
