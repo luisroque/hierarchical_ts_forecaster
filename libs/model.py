@@ -1,5 +1,6 @@
 import pymc3 as pm
 import theano.tensor as tt
+import theano
 import numpy as np
 from libs.pre_processing import generate_groups_data_matrix_minibatch, generate_groups_data_matrix
 
@@ -45,27 +46,28 @@ class PiecewiseLinearChangepoints(pm.gp.mean.Mean):
                  m,
                  b,
                  intercept, 
-                 changepoints):
+                 changepoints,
+                 groups):
         self.k = k
         self.m = m
         self.b = b
         self.a = intercept
+        self.g = groups
         self.changepoints = changepoints
 
-    def create_changepoints(X, changepoints):
-        return (0.5 * (1.0 + tt.sgn(tt.tile(X.reshape((-1,1)), (1,len(changepoints_t))) - changepoints_t)))
+    def create_changepoints(self, X, changepoints):
+        return (0.5 * (1.0 + tt.sgn(tt.tile(X.reshape((-1,1)), (1,len(changepoints))) - changepoints)))
 
     def __call__(self, X):
         size_r = X.shape[0]
 
         X = theano.shared(X)
             
-        A = self.create_changepoints(X[:n,0], self.changepoints)
+        A = self.create_changepoints(X, self.changepoints)
         
-        piecewise = (self.k + tt.dot(A, self.b.reshape((-1,1))))*X + (self.m + tt.dot(A, (-self.changepoints * self.b).reshape((-1,1))))
+        piecewise = (self.k + tt.dot(A, self.b.reshape((-1,1))))*tt.squeeze(X) + (self.m + tt.dot(A, (-self.changepoints * self.b).reshape((-1,1))))
         
-        return (piecewise.reshape((-1,))
-                       + tt.tile(self.a, (size_r,)))
+        return (piecewise + self.a).reshape((-1,))
 
 class HGPforecaster:
     """HGP forecaster
@@ -116,7 +118,7 @@ class HGPforecaster:
         self.pred_samples_fit=None
         self.pred_samples_predict=None
         self.season = self.g['seasonality']
-        self.changepoints = changepoints
+        self.changepoints = np.array([changepoints])
         self.n_iterations = n_iterations
         self.trace_vi = None
         self.pred_samples_fit = None
@@ -148,7 +150,7 @@ class HGPforecaster:
             self.priors["a0"] = pm.Normal(
                 "a0", 
                 mu=tt.log(np.mean(self.g['train']['full_data'][:,self.series_full], axis=0)), 
-                sd=0.2, 
+                sd=0.3, 
                 shape = self.g['train']['s']) 
 
             # prior for the periodic kernel (seasonality)
@@ -173,17 +175,26 @@ class HGPforecaster:
                     4, 
                     self.g['train']['n'], 
                     shape = self.g['train']['groups_n'][group])
+                self.priors["c_%s" %group] = pm.Normal(
+                    'c_%s' %group, 
+                    0, 
+                    1, 
+                    shape = self.g['train']['groups_n'][group])
                 self.priors["eta_t_%s" %group] = pm.HalfNormal(
                     'eta_t_%s' %group, 
-                    0.02,
+                    0.01,
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_p_%s" %group] = pm.HalfNormal(
                     'eta_p_%s' %group, 
                     0.04,
                     shape = self.g['train']['groups_n'][group])
+                self.priors["eta_l_%s" %group] = pm.HalfNormal(
+                    'eta_l_%s' %group, 
+                    0.04,
+                    shape = self.g['train']['groups_n'][group])
                 self.priors["sigma_%s" %group] = pm.HalfNormal(
                     'sigma_%s' %group, 
-                    0.005,
+                    0.01,
                     shape = self.g['train']['groups_n'][group])
 
                 if self.log_lin_mean:
@@ -202,31 +213,31 @@ class HGPforecaster:
                         "hy_b_%s" %group, 
                         mu=0.0, 
                         sd=0.5)
-                    self.priors["hy_a_%s" %group] = pm.Normal(
-                        "hy_a_%s" %group, 
-                        mu=0.0, 
-                        sd=5.)
+                    #self.priors["hy_a_%s" %group] = pm.Normal(
+                    #    "hy_a_%s" %group, 
+                    #    mu=0.0, 
+                    #    sd=5.)
 
                     # priors for the group effects
                     self.priors["b_%s" %group] = pm.Normal(
                         'b_%s' %group, 
                         self.priors["hy_b_%s" %group],
-                        0.1,
+                        0.01,
                         shape = self.g['train']['groups_n'][group])
-                    self.priors["a_%s" %group] = pm.Normal(
-                        'a_%s' %group, 
-                        self.priors["hy_a_%s" %group],
-                        1,
-                        shape = self.g['train']['groups_n'][group])
+                    #self.priors["a_%s" %group] = pm.Normal(
+                    #    'a_%s' %group, 
+                    #    self.priors["hy_a_%s" %group],
+                    #    1,
+                    #    shape = self.g['train']['groups_n'][group])
                     self.priors["k_%s" %group] = pm.Normal(
                         'k_%s' %group, 
                         0.0,
-                        0.1,
+                        0.01,
                         shape = self.g['train']['groups_n'][group])
                     self.priors["m_%s" %group] = pm.Normal(
                         'm_%s' %group, 
                         0.0,
-                        0.1,
+                        0.01,
                         shape = self.g['train']['groups_n'][group])
                 # Using linear kernel to model the mean of the GP (exponential)
                 else:
@@ -257,18 +268,20 @@ class HGPforecaster:
                     # mean function for the GP with specific parameters per group
 
                     if self.log_lin_mean:
-                        mu_func = Linear(b = self.priors["b_%s" %group][idx])
+                        mu_func = pm.gp.mean.Zero()#Linear(b = self.priors["b_%s" %group][idx])
                         
-                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                
+                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx]) 
+                                + self.priors["eta_l_%s" %group][idx]**2 * pm.gp.cov.Linear(input_dim=1, c=self.priors["c_%s" %group][idx])                                                               
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
                                 + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
 
                     elif self.changepoints:
-                        mu_func = PiecewiseLinearChangepoints(intercept = self.priors["a_%s" %group][idx],
+                        mu_func = PiecewiseLinearChangepoints(intercept = np.zeros(1),
                                                               b = self.priors["b_%s" %group][idx],
                                                               changepoints = self.changepoints,
                                                               k = self.priors["k_%s" %group][idx],
-                                                              m = self.priors["m_%s" %group][idx])
+                                                              m = self.priors["m_%s" %group][idx],
+                                                              groups = self.g)
 
                         cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
