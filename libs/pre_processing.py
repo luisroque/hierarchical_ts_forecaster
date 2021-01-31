@@ -70,18 +70,16 @@ def generate_groups_data_flat(y,
 
 def generate_groups_data_matrix(groups):
 
-    groups['train']['groups_idx']['state'] = groups['train']['groups_idx']['state'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
-    groups['train']['groups_idx']['gender'] = groups['train']['groups_idx']['gender'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
-    groups['train']['groups_idx']['legal'] = groups['train']['groups_idx']['legal'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
+    for group in groups['train']['groups_idx'].keys():
+        groups['train']['groups_idx'][group] = groups['train']['groups_idx'][group].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
+        groups['predict']['groups_idx'][group] = groups['predict']['groups_idx'][group].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
+
     groups['train']['full_data'] = groups['train']['data'].reshape(groups['train']['s'], groups['train']['n']).T
     groups['train']['data'] = groups['train']['data'].reshape(groups['train']['s'], groups['train']['n']).T
 
     groups['train']['n_series_idx_full'] = groups['train']['n_series_idx'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
     groups['train']['n_series_idx'] = groups['train']['n_series_idx'].reshape(groups['train']['s'], groups['train']['n']).T[0,:]
 
-    groups['predict']['groups_idx']['state'] = groups['predict']['groups_idx']['state'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
-    groups['predict']['groups_idx']['gender'] = groups['predict']['groups_idx']['gender'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
-    groups['predict']['groups_idx']['legal'] = groups['predict']['groups_idx']['legal'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
     groups['predict']['n_series_idx'] = groups['predict']['n_series_idx'].reshape(groups['predict']['s'], groups['predict']['n']).T[0,:]
 
     return groups
