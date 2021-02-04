@@ -168,6 +168,7 @@ class HGPforecaster:
         self.trace_vi_samples = None
         self.likelihood = likelihood
         self.piecewise_out = piecewise_out
+        self.dt = data_transform(self.g)
 
         if changepoints:
             self.changepoints = np.linspace(0, self.g['train']['n'], changepoints+2)[1:-1]
@@ -187,8 +188,7 @@ class HGPforecaster:
 
         if self.likelihood == 'normal':
             # if likelihood is normal standardize data
-            dt = data_transform(self.g)
-            self.g = dt.std_transf_train()
+            self.g = self.dt.std_transf_train()
 
         # to use minibatch transform the arrays to minibatch tensors
         if self.minibatch:
@@ -629,5 +629,5 @@ class HGPforecaster:
 
         # backtransform the data and predictions for the original scale
         if self.likelihood == 'normal':
-            self.g = dt.inv_transf_train()
-            self.pred_samples_predict = dt.inv_transf_general(self.pred_samples_predict)
+            self.g = self.dt.inv_transf_train()
+            self.pred_samples_predict = self.dt.inv_transf_general(self.pred_samples_predict)

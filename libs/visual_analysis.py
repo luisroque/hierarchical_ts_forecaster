@@ -119,7 +119,7 @@ def traceplot(trace):
     return pm.traceplot(trace, var_names=['~f_'], filter_vars="like")
 
 def model_graph(model):
-    return pm.model_graph.model_to_graphviz(m.model)
+    return pm.model_graph.model_to_graphviz(model)
 
 def visualize_prior(groups, prior_checks, n_series_to_show):
 
