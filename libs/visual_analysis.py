@@ -118,6 +118,9 @@ def visualize_predict(groups, pred_samples_predict, n_bottom_series_to_show, lev
 def traceplot(trace):
     return pm.traceplot(trace, var_names=['~f_'], filter_vars="like")
 
+def model_graph(model):
+    return pm.model_graph.model_to_graphviz(m.model)
+
 def visualize_prior(groups, prior_checks, n_series_to_show):
 
     assert n_series_to_show%2 == 0, "'n_series_to_show' must be an integer even number"
@@ -126,6 +129,6 @@ def visualize_prior(groups, prior_checks, n_series_to_show):
     ax = np.ravel(ax)
 
     for i in range(n_series_to_show):
-        ax[i].plot(prior_checks['f_'][:,:,i].T, color='b', alpha=0.1)
+        ax[i].plot(prior_checks['prior_like'][:,:,i].T, color='b', alpha=0.1)
         ax[i].plot(groups['train']['data'][:,i])
-        ax[i].set_ylim(0, max(groups['train']['data'][:,i])*2)
+        ax[i].set_ylim(min(min(groups['train']['data'][:,i])*5,0), max(groups['train']['data'][:,i])*5)

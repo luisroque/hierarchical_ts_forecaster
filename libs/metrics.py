@@ -97,7 +97,7 @@ def calculate_metrics(pred_samples,
     return results
 
 
-def metrics_to_table(groups, metrics):
+def metrics_to_table(metrics):
     metrics_l = []
     metrics_v = []
     for metric_name in metrics:

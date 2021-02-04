@@ -2,7 +2,7 @@ import pymc3 as pm
 import theano.tensor as tt
 import theano
 import numpy as np
-from libs.pre_processing import generate_groups_data_matrix_minibatch, generate_groups_data_matrix
+from libs.pre_processing import generate_groups_data_matrix_minibatch, generate_groups_data_matrix, data_transform
 
 '''
 Features:
@@ -24,7 +24,7 @@ Features:
 '''
 
 class LogLinear(pm.gp.mean.Mean):
-    # Log linear mean function to get diminishing returns on the mean 
+    # Log linear mean function to get diminishing returns on the GP mean functions
     # -> adding 1 to avoid inf when X = 0
     def __init__(self, b, a=0):
         self.a = a
@@ -181,10 +181,18 @@ class HGPforecaster:
 
         self.minibatch = minibatch
         self.log_lin_mean = log_lin_mean
+
+        # transform the data to matrix form
+        self.g = generate_groups_data_matrix(self.g)
+
+        if self.likelihood == 'normal':
+            # if likelihood is normal standardize data
+            dt = data_transform(self.g)
+            self.g = dt.std_transf_train()
+
+        # to use minibatch transform the arrays to minibatch tensors
         if self.minibatch:
             self.g, self.X_mi = generate_groups_data_matrix_minibatch(self.g, self.minibatch[0], self.minibatch[1])
-        else:
-            self.g = generate_groups_data_matrix(self.g)
 
         self.X = np.arange(self.g['train']['n']).reshape(-1,1)
 
@@ -210,7 +218,7 @@ class HGPforecaster:
                 # In the case of a normal likelihood we need to define sigma
                 self.priors['sigma'] = pm.HalfNormal(
                     'sigma',
-                    2.
+                    2.,
                     shape = self.g['train']['s'])
 
             if self.piecewise_out:
@@ -494,6 +502,43 @@ class HGPforecaster:
             self.generate_GPs()
 
         with self.model:
+            if self.likelihood=='poisson':
+                # defining a poisson likelihood
+                if self.piecewise_out:
+                    # poisson likelihood with a piecewise function summed
+                    piece = OutPiecewiseLinearChangepoints(k = self.priors["k"],
+                                                        m = self.priors["m"],
+                                                        b = self.priors['b'],
+                                                        changepoints = self.changepoints,
+                                                        groups = self.g).build(self.X)
+                    # this value is the value used as the lambda for the poisson likelihood
+                    self.prior_like = pm.Poisson('prior_like', 
+                                        mu=tt.exp(self.f + self.priors['a0'].reshape((1,-1)) + piece),
+                                        shape=(self.g['train']['data'].shape[0], self.g['train']['data'].shape[1]))
+                else:
+                    # not using a piecewise linear function outside of the GPs
+                    self.prior_like = pm.Poisson('prior_like', 
+                                        mu=tt.exp(self.f + self.priors['a0'].reshape((1,-1)) + piece),
+                                        shape=(self.g['train']['data'].shape[0], self.g['train']['data'].shape[1]))
+            else:
+                if self.piecewise_out:
+                    # normal likelihood with a piecewise function summed
+                    piece = OutPiecewiseLinearChangepoints(k = self.priors["k"],
+                                                        m = self.priors["m"],
+                                                        b = self.priors['b'],
+                                                        changepoints = self.changepoints,
+                                                        groups = self.g).build(self.X)
+                    self.prior_like = pm.Normal('prior_like', 
+                        mu=self.f + piece, 
+                        sd=self.priors['sigma'],
+                        shape=(self.g['train']['data'].shape[0], self.g['train']['data'].shape[1]))
+                else:
+                    # normal likelihood
+                    self.prior_like = pm.Normal('prior_like', 
+                        mu=self.f, 
+                        sd=self.priors['sigma'],
+                        shape=(self.g['train']['data'].shape[0], self.g['train']['data'].shape[1]))
+
             self.prior_checks = pm.sample_prior_predictive(200)
 
     def fit_map(self):
@@ -581,3 +626,8 @@ class HGPforecaster:
                 self.pred_samples_predict = pm.sample_posterior_predictive([self.mp], 
                               vars=[y_pred_new], 
                               samples=500)
+
+        # backtransform the data and predictions for the original scale
+        if self.likelihood == 'normal':
+            self.g = dt.inv_transf_train()
+            self.pred_samples_predict = dt.inv_transf_general(self.pred_samples_predict)

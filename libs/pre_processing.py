@@ -2,6 +2,27 @@ import pandas as pd
 import numpy as np
 import pymc3 as pm
 
+
+class data_transform():
+    def __init__(self, groups):
+        self.g = groups
+        self.mu_data = np.mean(self.g['train']['data'], axis=0)
+        self.std_data = np.std(self.g['train']['data'], axis=0)
+
+    def std_transf_train(self):
+        self.g['train']['data'] = (self.g['train']['data'] - self.mu_data)/self.std_data
+        return self.g
+
+    def inv_transf_train(self):
+        self.g['train']['data'] = (self.g['train']['data']*self.std_data) + self.mu_data
+        return self.g
+
+    def inv_transf_general(self, pred):
+        pred_samples = pred.shape[0]
+        pred = ((pred.reshape(-1, self.g['predict']['s'])*self.std_data) + self.mu_data).reshape(pred_samples, self.g['predict']['n'], self.g['predict']['s'])
+        return pred
+
+
 def generate_groups_data_flat(y,
                          groups_input,
                          seasonality,
