@@ -559,7 +559,7 @@ class HGPforecaster:
         self.likelihood_fn()
         with self.model:
             print('Fitting model...')
-            self.trace_vi = pm.fit(self.n_iterations, method='fullrank_advi')
+            self.trace_vi = pm.fit(self.n_iterations)
             print('Sampling...')
             self.trace_vi_samples = self.trace_vi.sample()
             self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples,
