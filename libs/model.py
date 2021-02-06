@@ -168,7 +168,6 @@ class HGPforecaster:
         self.trace_vi_samples = None
         self.likelihood = likelihood
         self.piecewise_out = piecewise_out
-        self.dt = data_transform(self.g)
 
         if changepoints:
             self.changepoints = np.linspace(0, self.g['train']['n'], changepoints+2)[1:-1]
@@ -185,6 +184,7 @@ class HGPforecaster:
 
         # transform the data to matrix form
         self.g = generate_groups_data_matrix(self.g)
+        self.dt = data_transform(self.g)
 
         if self.likelihood == 'normal':
             # if likelihood is normal standardize data
@@ -630,4 +630,4 @@ class HGPforecaster:
         # backtransform the data and predictions for the original scale
         if self.likelihood == 'normal':
             self.g = self.dt.inv_transf_train()
-            self.pred_samples_predict = self.dt.inv_transf_general(self.pred_samples_predict)
+            self.pred_samples_predict = self.dt.inv_transf_general(self.pred_samples_predict['y_pred_new'])
