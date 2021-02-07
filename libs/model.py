@@ -565,7 +565,7 @@ class HGPforecaster:
             print('Sampling...')
             self.trace_vi_samples = self.trace_vi.sample()
             self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples,
-                                                                   vars=[self.y_pred]
+                                                                   vars=[self.y_pred],
                                                                    samples=500)
 
         # backtransform the sampling of the fit for the original scale
