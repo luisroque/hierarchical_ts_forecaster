@@ -151,7 +151,8 @@ class HGPforecaster:
         minibatch=None,
         log_lin_mean=None,
         likelihood='normal',
-        piecewise_out = False
+        piecewise_out = False,
+        #kernel_lin_mean=None,
     ):
         self.model = pm.Model()
         self.priors = {}
@@ -354,27 +355,28 @@ class HGPforecaster:
                             1.,
                             shape = self.g['train']['groups_n'][group])
                 else:
+                    pass
                     # Using linear kernel to model the mean of the GP (exponential)
-                    if self.likelihood=='poisson':
-                        self.priors["c_%s" %group] = pm.Normal(
-                            'c_%s' %group, 
-                            0, 
-                            0.05, 
-                            shape = self.g['train']['groups_n'][group])
-                        self.priors["eta_l_%s" %group] = pm.HalfNormal(
-                            'eta_l_%s' %group, 
-                            0.01,
-                            shape = self.g['train']['groups_n'][group])
-                    else:
-                        self.priors["c_%s" %group] = pm.Normal(
-                            'c_%s' %group, 
-                            0, 
-                            1, 
-                            shape = self.g['train']['groups_n'][group])
-                        self.priors["eta_l_%s" %group] = pm.HalfNormal(
-                            'eta_l_%s' %group, 
-                            1,
-                            shape = self.g['train']['groups_n'][group])
+                    # if self.likelihood=='poisson':
+                    #     self.priors["c_%s" %group] = pm.Normal(
+                    #         'c_%s' %group, 
+                    #         0, 
+                    #         0.05, 
+                    #         shape = self.g['train']['groups_n'][group])
+                    #     self.priors["eta_l_%s" %group] = pm.HalfNormal(
+                    #         'eta_l_%s' %group, 
+                    #         0.01,
+                    #         shape = self.g['train']['groups_n'][group])
+                    # else:
+                    #     self.priors["c_%s" %group] = pm.Normal(
+                    #         'c_%s' %group, 
+                    #         0, 
+                    #         1, 
+                    #         shape = self.g['train']['groups_n'][group])
+                    #     self.priors["eta_l_%s" %group] = pm.HalfNormal(
+                    #         'eta_l_%s' %group, 
+                    #         1,
+                    #         shape = self.g['train']['groups_n'][group])
 
 
     def generate_GPs(self):
@@ -563,7 +565,12 @@ class HGPforecaster:
             print('Sampling...')
             self.trace_vi_samples = self.trace_vi.sample()
             self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples,
-                                      samples=500)
+                                                                   vars=[self.y_pred]
+                                                                   samples=500)
+
+        # backtransform the sampling of the fit for the original scale
+        if self.likelihood == 'normal':
+            self.pred_samples_fit = self.dt.inv_transf_general(self.pred_samples_fit['y_pred'])
 
 
     def predict(self):

@@ -8,8 +8,8 @@ def visualize_fit(groups, pred_samples_fit, n_series_to_show):
     n = groups['train']['n']
     ax = np.ravel(ax)
     for i in range(n_series_to_show):
-        ax[i].plot(np.arange(n), pred_samples_fit.T[i*n:i*n+n,:], alpha=0.003, color='orange', label='model fit')
-        ax[i].plot(np.arange(n), groups['train']['full_data'][i*n:i*n+n], label='data')
+        ax[i].plot(np.arange(n), pred_samples_fit[:,:,i].T, alpha=0.003, color='orange', label='model fit')
+        ax[i].plot(np.arange(n), groups['train']['data'][:,i], label='data')
 
 def visualize_predict(groups, pred_samples_predict, n_bottom_series_to_show, levels=[0,1,2]):
     """
