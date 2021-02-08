@@ -285,15 +285,15 @@ class HGPforecaster:
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_t_%s" %group] = pm.HalfNormal(
                     'eta_t_%s' %group, 
-                    0.1, # 0.02
+                    0.02,
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_p_%s" %group] = pm.HalfNormal(
                     'eta_p_%s' %group, 
-                    0.5, #0.05
+                    0.05,
                     shape = self.g['train']['groups_n'][group])
                 self.priors["sigma_%s" %group] = pm.HalfNormal(
                     'sigma_%s' %group, 
-                    0.005, #0.001
+                    0.001,
                     shape = self.g['train']['groups_n'][group])
 
                 if self.log_lin_mean:
@@ -337,7 +337,7 @@ class HGPforecaster:
                         self.priors["hy_b_%s" %group] = pm.Normal(
                             "hy_b_%s" %group, 
                             mu=0.0, 
-                            sd=1.,
+                            sd=0.1,
                             shape=self.g['train']['groups_n'][group])
                         # priors for the group effects
                         # we want a partial pooling effect, so reduce the sd of the several parameters,
@@ -345,17 +345,17 @@ class HGPforecaster:
                         self.priors["b_%s" %group] = pm.Normal(
                             'b_%s' %group, 
                             self.priors["hy_b_%s" %group],
-                            0.1,
+                            0.05,
                             shape = (self.changepoints.shape[0], self.g['train']['groups_n'][group]))
                         self.priors["k_%s" %group] = pm.Normal(
                             'k_%s' %group, 
                             0.0,
-                            1.,
+                            0.1,
                             shape = self.g['train']['groups_n'][group])
                         self.priors["m_%s" %group] = pm.Normal(
                             'm_%s' %group, 
                             0.0,
-                            1.,
+                            0.1,
                             shape = self.g['train']['groups_n'][group])
                 else:
                     pass
