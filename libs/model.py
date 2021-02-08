@@ -53,26 +53,29 @@ class PiecewiseLinearChangepoints(pm.gp.mean.Mean):
                  b,
                  intercept, 
                  changepoints,
-                 groups):
+                 groups, 
+                 minibatch):
         self.k = k
         self.m = m
         self.b = b
         self.a = intercept
         self.g = groups
         self.changepoints = changepoints
+        self.minibatch = minibatch
 
     def create_changepoints(self, X, changepoints):
         return (0.5 * (1.0 + tt.sgn(tt.tile(X.reshape((-1,1)), (1,len(changepoints))) - changepoints)))
 
     def __call__(self, X):
-        size_r = X.shape[0]
-
-        X = theano.shared(X)
+        
+        if not self.minibatch:
+            # with minibatch X is already a theano variable
+            X = theano.shared(X)
             
         A = self.create_changepoints(X, self.changepoints)
 
-        piecewise = (self.k + tt.dot(A, self.b.reshape((-1,1))))*tt.squeeze(X) + (self.m + tt.dot(A, (-self.changepoints * self.b).reshape((-1,1))))
-        
+        piecewise = (self.k + tt.dot(A, self.b.reshape((-1,1))))*X + (self.m + tt.dot(A, (-self.changepoints * self.b).reshape((-1,1))))
+
         return (piecewise + self.a).reshape((-1,))
 
 
@@ -406,7 +409,8 @@ class HGPforecaster:
                                                               changepoints = self.changepoints,
                                                               k = self.priors["k_%s" %group][idx],
                                                               m = self.priors["m_%s" %group][idx],
-                                                              groups = self.g)
+                                                              groups = self.g,
+                                                              minibatch = self.minibatch)
 
                         cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])                                
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
@@ -454,7 +458,7 @@ class HGPforecaster:
                     # defining a normal likelihood with minibatch
                     self.y_pred = pm.Normal('y_pred', 
                                 mu=self.f,
-                                sd=self.priors['sigma'],
+                                sd=self.priors['sigma'][self.series].reshape((1,-1)),
                                 observed=self.g['train']['data'], 
                                 total_size=(self.g['train']['n'],self.g['train']['s']))
 
@@ -502,6 +506,9 @@ class HGPforecaster:
         # Avoid generating priors if already created
         if not self.priors:
             self.generate_GPs()
+
+        if self.minibatch:
+            raise NotImplementedError("Please do your prior predictive checks without using minibatch")
 
         with self.model:
             if self.likelihood=='poisson':
@@ -561,16 +568,26 @@ class HGPforecaster:
         self.likelihood_fn()
         with self.model:
             print('Fitting model...')
-            self.trace_vi = pm.fit(self.n_iterations)
+            self.trace_vi = pm.fit(self.n_iterations,
+                                   # Stochastic nature of VI in PyMC3. In PyMC3, VI uses MC sample to approximate the objective gradients. 
+                                   # As a consequence, the result of the fit is stochastic - you can see that in the ELBO it is not always decreasing. 
+                                   # So when you stop the training, VI return the fitting from the last iteration, which can happen to have high ELBO. 
+                                   # Solution is to increase the obj_n_mc - Number of monte carlo samples used for approximation of objective gradients. 
+                                   obj_n_mc=5,
+                                   obj_optimizer=pm.adagrad(learning_rate=.01),
+                                   # Defining a callback to do early stop when convergence is achieved
+                                   callbacks=[pm.callbacks.CheckParametersConvergence(every=50, diff='absolute',tolerance=1e-2)])
             print('Sampling...')
             self.trace_vi_samples = self.trace_vi.sample()
             self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples,
                                                                    vars=[self.y_pred],
                                                                    samples=500)
-
-        # backtransform the sampling of the fit for the original scale
-        if self.likelihood == 'normal':
-            self.pred_samples_fit = self.dt.inv_transf_general(self.pred_samples_fit['y_pred'])
+    
+        if not self.minibatch:
+            # with minibatch there is no possibility to recover the fitted values
+            # backtransform the sampling of the fit for the original scale
+            if self.likelihood == 'normal':
+                self.pred_samples_fit = self.dt.inv_transf_general(self.pred_samples_fit['y_pred'])
 
 
     def predict(self):
