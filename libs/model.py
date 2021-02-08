@@ -576,7 +576,7 @@ class HGPforecaster:
                                    obj_n_mc=5,
                                    obj_optimizer=pm.adagrad(learning_rate=.01),
                                    # Defining a callback to do early stop when convergence is achieved
-                                   callbacks=[pm.callbacks.CheckParametersConvergence(every=50, diff='absolute',tolerance=1e-2)])
+                                   callbacks=[pm.callbacks.CheckParametersConvergence(every=100, diff='absolute',tolerance=1e-3)])
             print('Sampling...')
             self.trace_vi_samples = self.trace_vi.sample()
             self.pred_samples_fit = pm.sample_posterior_predictive(self.trace_vi_samples,
@@ -587,7 +587,7 @@ class HGPforecaster:
             # with minibatch there is no possibility to recover the fitted values
             # backtransform the sampling of the fit for the original scale
             if self.likelihood == 'normal':
-                self.pred_samples_fit = self.dt.inv_transf_general(self.pred_samples_fit['y_pred'])
+                self.pred_samples_fit = self.dt.inv_transf_train_general(self.pred_samples_fit['y_pred'])
 
 
     def predict(self):
@@ -654,4 +654,4 @@ class HGPforecaster:
         # backtransform the data and predictions for the original scale
         if self.likelihood == 'normal':
             self.g = self.dt.inv_transf_train()
-            self.pred_samples_predict = self.dt.inv_transf_general(self.pred_samples_predict['y_pred_new'])
+            self.pred_samples_predict = self.dt.inv_transf_predict_general(self.pred_samples_predict['y_pred_new'])

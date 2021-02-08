@@ -17,7 +17,12 @@ class data_transform():
         self.g['train']['data'] = (self.g['train']['data']*self.std_data) + self.mu_data
         return self.g
 
-    def inv_transf_general(self, pred):
+    def inv_transf_train_general(self, pred):
+        pred_samples = pred.shape[0]
+        pred = ((pred.reshape(-1, self.g['train']['s'])*self.std_data) + self.mu_data).reshape(pred_samples, self.g['train']['n'], self.g['train']['s'])
+        return pred
+
+    def inv_transf_predict_general(self, pred):
         pred_samples = pred.shape[0]
         pred = ((pred.reshape(-1, self.g['predict']['s'])*self.std_data) + self.mu_data).reshape(pred_samples, self.g['predict']['n'], self.g['predict']['s'])
         return pred
