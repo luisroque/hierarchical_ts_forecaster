@@ -14,7 +14,7 @@ class data_transform():
         return self.g
 
     def inv_transf_train(self):
-        self.g['train']['data'] = (self.g['train']['full_data']*self.std_data) + self.mu_data
+        self.g['train']['data'] = (self.g['train']['data']*self.std_data) + self.mu_data
         return self.g
 
     def inv_transf_train_general(self, pred):
