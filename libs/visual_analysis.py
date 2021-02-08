@@ -132,3 +132,7 @@ def visualize_prior(groups, prior_checks, n_series_to_show):
         ax[i].plot(prior_checks['prior_like'][:,:,i].T, color='b', alpha=0.1)
         ax[i].plot(groups['train']['data'][:,i])
         ax[i].set_ylim(min(min(groups['train']['data'][:,i])*5,0), max(groups['train']['data'][:,i])*5)
+
+def plot_elbo(trace, last_it=20000):
+    plt.plot(-trace.hist[-last_it:])
+    plt.title('ELBO of the last {last_it} iterations')

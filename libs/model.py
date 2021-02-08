@@ -569,12 +569,13 @@ class HGPforecaster:
         with self.model:
             print('Fitting model...')
             self.trace_vi = pm.fit(self.n_iterations,
+                                   method='advi',
                                    # Stochastic nature of VI in PyMC3. In PyMC3, VI uses MC sample to approximate the objective gradients. 
                                    # As a consequence, the result of the fit is stochastic - you can see that in the ELBO it is not always decreasing. 
                                    # So when you stop the training, VI return the fitting from the last iteration, which can happen to have high ELBO. 
                                    # Solution is to increase the obj_n_mc - Number of monte carlo samples used for approximation of objective gradients. 
                                    obj_n_mc=5,
-                                   obj_optimizer=pm.adagrad(learning_rate=.01),
+                                   obj_optimizer=pm.adamax(),
                                    # Defining a callback to do early stop when convergence is achieved
                                    callbacks=[pm.callbacks.CheckParametersConvergence(every=100, diff='absolute',tolerance=1e-3)])
             print('Sampling...')
