@@ -14,7 +14,11 @@ def mase(n,seas,h,y,f):
 def calculate_metrics(pred_samples,
                       groups):
 
-    pred_samples = pred_samples.reshape(500, 32*48, order='F')
+    pred_s0 = pred_samples.shape[0]
+    pred_s1 = pred_samples.shape[1]
+    pred_s2 = pred_samples.shape[2]
+
+    pred_samples = pred_samples.reshape(pred_s0, pred_s1*pred_s2, order='F')
 
     seasonality = groups['seasonality']
     h = groups['h']
