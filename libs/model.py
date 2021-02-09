@@ -574,7 +574,7 @@ class HGPforecaster:
                                    # As a consequence, the result of the fit is stochastic - you can see that in the ELBO it is not always decreasing. 
                                    # So when you stop the training, VI return the fitting from the last iteration, which can happen to have high ELBO. 
                                    # Solution is to increase the obj_n_mc - Number of monte carlo samples used for approximation of objective gradients. 
-                                   obj_n_mc=5,
+                                   obj_n_mc=1,
                                    obj_optimizer=pm.adamax(),
                                    # Defining a callback to do early stop when convergence is achieved
                                    callbacks=[pm.callbacks.CheckParametersConvergence(every=50, diff='absolute',tolerance=1e-3)])
