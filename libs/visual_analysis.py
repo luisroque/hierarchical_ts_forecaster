@@ -136,3 +136,37 @@ def visualize_prior(groups, prior_checks, n_series_to_show):
 def plot_elbo(trace, last_it=80000):
     plt.plot(-trace.hist[-last_it:])
     plt.title(f'ELBO of the last {last_it} iterations')
+
+def plot_gps_components(series, groups, trace, dt):
+    g_idx = [g_idx[series] for g_idx in list(groups['predict']['groups_idx'].values())]
+
+    names_g  = [names[g_idx] for g_idx, names in zip(g_idx, list(groups['train']['groups_names'].values()))]
+
+    _, ax = plt.subplots(groups['train']['g_number']+2, 1, figsize=(20, 20))
+
+    ax = ax.ravel()
+
+    color = ['tab:blue', 'tab:orange', 'tab:green', 'tab:red',
+            'tab:purple', 'tab:brown', 'tab:pink', 'tab:grey',
+            'tab:olive']
+    ax[0].set_title(f'Sum of all GPs for series {series}, represented by groups {names_g}')
+
+    trace_vi_inv_transf = []
+    for i in range(groups['train']['g_number']):
+        trace_vi_inv_transf.append((trace[f'f_{names_g[i]}'].T*dt.std_data[series]) + dt.mu_data[series])
+    trace_vi_inv_transf = np.asarray(trace_vi_inv_transf)
+
+
+    sum_gps = np.sum(trace_vi_inv_transf, axis=0)
+    ax[0].plot(sum_gps, color='black', alpha=0.1)
+    ax[0].set_ylim(0, np.max(sum_gps)*1.1)
+
+    ax[1].set_title('Stacked representation of the sum of the GPs')
+    ax[1].stackplot(np.arange(trace_vi_inv_transf.shape[1]), np.mean(trace_vi_inv_transf, axis=2), colors=color)
+    ax[1].set_ylim(0, np.max(sum_gps)*1.1)
+
+    for i in range(m.g['train']['g_number']):
+        ax[i+2].plot(trace_vi_inv_transf[i,:,:], color=color[i], alpha=0.1)
+        group = list(groups['train']['groups_names'].keys())[i]
+        ax[i+2].set_title(f'GP for {group} {names_g[i]}')
+        ax[i+2].set_ylim(0, np.max(sum_gps)*1.1)
