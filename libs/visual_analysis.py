@@ -130,7 +130,7 @@ def visualize_prior(groups, prior_checks, n_series_to_show):
 
     for i in range(n_series_to_show):
         ax[i].plot(prior_checks['prior_like'][:,:,i].T, color='b', alpha=0.1)
-        ax[i].plot(groups['train']['data'][:,i])
+        ax[i].plot(groups['train']['data'][:,i], color='darkorange')
         ax[i].set_ylim(min(min(groups['train']['data'][:,i])*5,0), max(groups['train']['data'][:,i])*5)
 
 def plot_elbo(trace, last_it=80000):
