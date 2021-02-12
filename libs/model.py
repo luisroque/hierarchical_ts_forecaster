@@ -13,7 +13,8 @@ Features:
 2. The seasonality to consider (i.e. the periodic 
     kernel defined for the cov function of the GP)
 3. Option to define a piecewise function for the GP mean and respective
-    selection of the number of changepoints
+    selection of the number of changepoints - avoiding the need to apply 
+    first differnece to the data
 4. Option to define a linear function (defined as log linear considering 
     the log-link function used with the Poisson distribution)
 5. Option to use MAP or VI to estimate the parameter values (VI is advised 
@@ -21,6 +22,8 @@ Features:
 6. Possibility to use Minibatch that ensures scalability of the model
 7. Option to choose Poisson or Normal likelihood (for the normal case,
     it is assumed that the data is standardized)
+8. Possibility to define a linear kernel to model the linear trend of the data
+    avoiding the need to apply first differnece to the data
 '''
 
 class LogLinear(pm.gp.mean.Mean):
@@ -155,7 +158,7 @@ class HGPforecaster:
         log_lin_mean=None,
         likelihood='normal',
         piecewise_out = False,
-        #kernel_lin_mean=None,
+        kernel_lin_mean=None,
     ):
         self.model = pm.Model()
         self.priors = {}
@@ -172,6 +175,8 @@ class HGPforecaster:
         self.trace_vi_samples = None
         self.likelihood = likelihood
         self.piecewise_out = piecewise_out
+
+        self.kernel_lin_mean = kernel_lin_mean
 
         if changepoints:
             self.changepoints = np.linspace(0, self.g['train']['n'], changepoints+2)[1:-1]
@@ -273,13 +278,10 @@ class HGPforecaster:
                 # The data don't inform length scales larger than the maximum covariate distance 
                 # and shorter than the minimum covariate distance (distance between time points which 
                 # is always 1 in our case).
+
+                # Parameters expQuad kernel
                 self.priors["l_t_%s" %group] = pm.InverseGamma(
                     'l_t_%s' %group, 
-                    4, 
-                    self.g['train']['n'], 
-                    shape = self.g['train']['groups_n'][group])
-                self.priors["l_p_%s" %group] = pm.InverseGamma(
-                    'l_p_%s' %group, 
                     4, 
                     self.g['train']['n'], 
                     shape = self.g['train']['groups_n'][group])
@@ -287,10 +289,19 @@ class HGPforecaster:
                     'eta_t_%s' %group, 
                     1,
                     shape = self.g['train']['groups_n'][group])
+
+                # Parameters periodic kernel
+                self.priors["l_p_%s" %group] = pm.Gamma(
+                    'l_p_%s' %group, 
+                    2, 
+                    1, 
+                    shape = self.g['train']['groups_n'][group])
                 self.priors["eta_p_%s" %group] = pm.HalfNormal(
                     'eta_p_%s' %group, 
                     1.5, 
                     shape = self.g['train']['groups_n'][group])
+
+                # Parameters white noise kernel
                 self.priors["sigma_%s" %group] = pm.HalfNormal(
                     'sigma_%s' %group, 
                     0.001,
@@ -357,29 +368,28 @@ class HGPforecaster:
                             0.0,
                             0.1,
                             shape = self.g['train']['groups_n'][group])
-                else:
-                    pass
-                    # Using linear kernel to model the mean of the GP (exponential)
-                    # if self.likelihood=='poisson':
-                    #     self.priors["c_%s" %group] = pm.Normal(
-                    #         'c_%s' %group, 
-                    #         0, 
-                    #         0.05, 
-                    #         shape = self.g['train']['groups_n'][group])
-                    #     self.priors["eta_l_%s" %group] = pm.HalfNormal(
-                    #         'eta_l_%s' %group, 
-                    #         0.01,
-                    #         shape = self.g['train']['groups_n'][group])
-                    # else:
-                    #     self.priors["c_%s" %group] = pm.Normal(
-                    #         'c_%s' %group, 
-                    #         0, 
-                    #         1, 
-                    #         shape = self.g['train']['groups_n'][group])
-                    #     self.priors["eta_l_%s" %group] = pm.HalfNormal(
-                    #         'eta_l_%s' %group, 
-                    #         1,
-                    #         shape = self.g['train']['groups_n'][group])
+                elif self.kernel_lin_mean:
+                    # Parameters linear kernel to model the mean of the GP
+                    if self.likelihood=='poisson':
+                        self.priors["c_%s" %group] = pm.Normal(
+                            'c_%s' %group, 
+                            0, 
+                            0.05, 
+                            shape = self.g['train']['groups_n'][group])
+                        self.priors["eta_l_%s" %group] = pm.HalfNormal(
+                            'eta_l_%s' %group, 
+                            0.01,
+                            shape = self.g['train']['groups_n'][group])
+                    else:
+                        self.priors["c_%s" %group] = pm.Normal(
+                            'c_%s' %group, 
+                            0, 
+                            1, 
+                            shape = self.g['train']['groups_n'][group])
+                        self.priors["eta_l_%s" %group] = pm.HalfNormal(
+                            'eta_l_%s' %group, 
+                            1,
+                            shape = self.g['train']['groups_n'][group])
 
 
     def generate_GPs(self):
@@ -416,8 +426,18 @@ class HGPforecaster:
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
                                 + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
 
+                    elif self.kernel_lin_mean:
+                        mu_func = pm.gp.mean.Zero()
+
+                        # cov function for the GP with specific parameters per group
+                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])
+                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
+                                + self.priors["eta_l_%s" %group][idx]**2 * pm.gp.cov.Linear(1, c=self.priors["c_%s" %group][idx]) 
+                                + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
+
                     else:
                         mu_func = pm.gp.mean.Zero()
+
                         # cov function for the GP with specific parameters per group
                         cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 

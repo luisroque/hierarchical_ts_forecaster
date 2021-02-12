@@ -137,7 +137,7 @@ def plot_elbo(trace, last_it=80000):
     plt.plot(-trace.hist[-last_it:])
     plt.title(f'ELBO of the last {last_it} iterations')
 
-def plot_gps_components(series, groups, trace, dt):
+def plot_gps_components(series, groups, trace):
     g_idx = [g_idx[series] for g_idx in list(groups['predict']['groups_idx'].values())]
 
     names_g  = [names[g_idx] for g_idx, names in zip(g_idx, list(groups['train']['groups_names'].values()))]
