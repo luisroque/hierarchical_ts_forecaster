@@ -285,15 +285,15 @@ class HGPforecaster:
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_t_%s" %group] = pm.HalfNormal(
                     'eta_t_%s' %group, 
-                    0.5,
+                    1,
                     shape = self.g['train']['groups_n'][group])
                 self.priors["eta_p_%s" %group] = pm.HalfNormal(
                     'eta_p_%s' %group, 
-                    1, 
+                    1.5, 
                     shape = self.g['train']['groups_n'][group])
                 self.priors["sigma_%s" %group] = pm.HalfNormal(
                     'sigma_%s' %group, 
-                    0.0001,
+                    0.001,
                     shape = self.g['train']['groups_n'][group])
 
                 if self.log_lin_mean:

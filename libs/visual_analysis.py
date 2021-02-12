@@ -151,22 +151,21 @@ def plot_gps_components(series, groups, trace, dt):
             'tab:olive']
     ax[0].set_title(f'Sum of all GPs for series {series}, represented by groups {names_g}')
 
-    trace_vi_inv_transf = []
+    trace_vi = []
     for i in range(groups['train']['g_number']):
-        trace_vi_inv_transf.append((trace[f'f_{names_g[i]}'].T*dt.std_data[series]) + dt.mu_data[series])
-    trace_vi_inv_transf = np.asarray(trace_vi_inv_transf)
+        trace_vi.append(trace[f'f_{names_g[i]}'].T)
+    trace_vi = np.asarray(trace_vi)
 
-
-    sum_gps = np.sum(trace_vi_inv_transf, axis=0)
+    sum_gps = np.sum(trace_vi, axis=0)
     ax[0].plot(sum_gps, color='black', alpha=0.1)
-    ax[0].set_ylim(0, np.max(sum_gps)*1.1)
+    ax[0].set_ylim(min(0, np.min(sum_gps)*1.1), np.max(sum_gps)*1.1)
 
     ax[1].set_title('Stacked representation of the sum of the GPs')
-    ax[1].stackplot(np.arange(trace_vi_inv_transf.shape[1]), np.mean(trace_vi_inv_transf, axis=2), colors=color)
-    ax[1].set_ylim(0, np.max(sum_gps)*1.1)
+    ax[1].stackplot(np.arange(trace_vi.shape[1]), np.mean(trace_vi, axis=2), colors=color)
+    ax[1].set_ylim(min(0, np.min(sum_gps)*1.1), np.max(sum_gps)*1.1)
 
-    for i in range(m.g['train']['g_number']):
-        ax[i+2].plot(trace_vi_inv_transf[i,:,:], color=color[i], alpha=0.1)
+    for i in range(groups['train']['g_number']):
+        ax[i+2].plot(trace_vi[i,:,:], color=color[i], alpha=0.1)
         group = list(groups['train']['groups_names'].keys())[i]
         ax[i+2].set_title(f'GP for {group} {names_g[i]}')
-        ax[i+2].set_ylim(0, np.max(sum_gps)*1.1)
+        ax[i+2].set_ylim(min(0, np.min(sum_gps)*1.1), np.max(sum_gps)*1.1)
