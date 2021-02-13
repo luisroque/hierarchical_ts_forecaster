@@ -116,9 +116,10 @@ def generate_groups_data_matrix_minibatch(groups,
                                           s_mi):
 
     groups['train']['n_series_idx'] = pm.Minibatch(groups['train']['n_series_idx'], s_mi)
-    groups['train']['groups_idx']['state'] = pm.Minibatch(groups['train']['groups_idx']['state'], s_mi)
-    groups['train']['groups_idx']['gender'] =pm.Minibatch(groups['train']['groups_idx']['gender'], s_mi)
-    groups['train']['groups_idx']['legal'] = pm.Minibatch(groups['train']['groups_idx']['legal'], s_mi)
+
+    for group in groups['train']['groups_idx'].keys():
+        groups['train']['groups_idx'][group] = pm.Minibatch(groups['train']['groups_idx'][group], s_mi)
+
     groups['train']['data'] = pm.Minibatch(groups['train']['data'], ((n_mi,s_mi)))
     
     X = np.arange(groups['train']['n']).reshape(-1,1)
