@@ -25,7 +25,7 @@ Features:
 8. Possibility to define a linear kernel to model the linear trend of the data
     avoiding the need to apply first difference to the data
 9. Option to partially pool all parameters using hyperpriors per group
-10. Select onlu partial pooling on the mean
+10. Select only partial pooling on the mean
 '''
 
 class LogLinear(pm.gp.mean.Mean):
@@ -245,39 +245,105 @@ class HGPforecaster:
 
             if self.piecewise_out:
                 if self.likelihood == 'poisson':
-                    self.priors["k"] = pm.Normal(
-                        'k',
-                        0.0,
-                        0.01,
-                        shape = self.g['train']['s'])
-                    self.priors["m"] = pm.Normal(
-                        'm', 
-                        0.0,
-                        0.01,
-                        shape = self.g['train']['s'])
+                    if self.partial_pool_mean:
+                        # priors for the group effects
+                        # we want a partial pooling effect, so reduce the sd of the several parameters,
+                        # while defining a wider hyperparameter
+                        self.priors["hy_b_%s" %group] = pm.Normal(
+                            "hy_b_%s" %group, 
+                            mu=0.0, 
+                            sd=0.001)
+                        self.priors["hy_k_%s" %group] = pm.Normal(
+                            'hy_k_%s' %group, 
+                            0.0,
+                            0.001)
+                        self.priors["hy_m_%s" %group] = pm.Normal(
+                            'hy_m_%s' %group, 
+                            0.0,
+                            0.001)       
+                        # Partially pooled parameters
+                        self.priors["b_%s" %group] = pm.Normal(
+                            "b_%s" %group, 
+                            self.priors["hy_b_%s" %group], 
+                            0.0001,
+                            shape=(self.changepoints.shape[0], self.g['train']['groups_n'][group]))
+                        self.priors["k_%s" %group] = pm.Normal(
+                            "k_%s" %group, 
+                            self.priors["hy_k_%s" %group], 
+                            0.0001,
+                            shape=self.g['train']['groups_n'][group])
+                        self.priors["m_%s" %group] = pm.Normal(
+                            "m_%s" %group, 
+                            self.priors["hy_m_%s" %group], 
+                            0.0001,
+                            shape=self.g['train']['groups_n'][group])
+                    else:
+                        self.priors["k"] = pm.Normal(
+                            'k',
+                            0.0,
+                            0.01,
+                            shape = self.g['train']['s'])
+                        self.priors["m"] = pm.Normal(
+                            'm', 
+                            0.0,
+                            0.01,
+                            shape = self.g['train']['s'])
 
-                    self.priors["b"] = pm.Normal(
-                        'b', 
-                        0.,
-                        0.01,
-                        shape = (self.changepoints.shape[0], self.g['train']['s']))
+                        self.priors["b"] = pm.Normal(
+                            'b', 
+                            0.,
+                            0.01,
+                            shape = (self.changepoints.shape[0], self.g['train']['s']))     
                 else:
-                    self.priors["k"] = pm.Normal(
-                        'k',
-                        0.0,
-                        1,
-                        shape = self.g['train']['s'])
-                    self.priors["m"] = pm.Normal(
-                        'm', 
-                        0.0,
-                        1,
-                        shape = self.g['train']['s'])
-
-                    self.priors["b"] = pm.Normal(
-                        'b', 
-                        0.,
-                        1,
-                        shape = (self.changepoints.shape[0], self.g['train']['s']))
+                    # Normal likelihood
+                    if self.partial_pool_mean:
+                        # priors for the group effects
+                        # we want a partial pooling effect, so reduce the sd of the several parameters,
+                        # while defining a wider hyperparameter
+                        self.priors["hy_b_%s" %group] = pm.Normal(
+                            "hy_b_%s" %group, 
+                            mu=0.0, 
+                            sd=0.01)
+                        self.priors["hy_k_%s" %group] = pm.Normal(
+                            'hy_k_%s' %group, 
+                            0.0,
+                            0.01)
+                        self.priors["hy_m_%s" %group] = pm.Normal(
+                            'hy_m_%s' %group, 
+                            0.0,
+                            0.01)       
+                        # Partially pooled parameters
+                        self.priors["b_%s" %group] = pm.Normal(
+                            "b_%s" %group, 
+                            self.priors["hy_b_%s" %group], 
+                            0.001,
+                            shape=(self.changepoints.shape[0], self.g['train']['groups_n'][group]))
+                        self.priors["k_%s" %group] = pm.Normal(
+                            "k_%s" %group, 
+                            self.priors["hy_k_%s" %group], 
+                            0.001,
+                            shape=self.g['train']['groups_n'][group])
+                        self.priors["m_%s" %group] = pm.Normal(
+                            "m_%s" %group, 
+                            self.priors["hy_m_%s" %group], 
+                            0.001,
+                            shape=self.g['train']['groups_n'][group])
+                    else:
+                        self.priors["k"] = pm.Normal(
+                            'k',
+                            0.0,
+                            0.01,
+                            shape = self.g['train']['s'])
+                        self.priors["m"] = pm.Normal(
+                            'm', 
+                            0.0,
+                            0.01,
+                            shape = self.g['train']['s'])
+                        self.priors["b"] = pm.Normal(
+                            'b', 
+                            0.,
+                            0.01,
+                            shape = (self.changepoints.shape[0], self.g['train']['s']))                        
 
             # prior for the periodic kernel (seasonality)
             self.priors["period"] = pm.Laplace(
@@ -304,10 +370,9 @@ class HGPforecaster:
                         1)
 
                     # Parameters periodic kernel
-                    self.priors["hy_l_p_%s" %group] = pm.Gamma(
+                    self.priors["hy_l_p_%s" %group] = pm.HalfNormal(
                         'hy_l_p_%s' %group, 
-                        2, 
-                        1)
+                         0.5)
                     self.priors["hy_eta_p_%s" %group] = pm.HalfNormal(
                         'hy_eta_p_%s' %group, 
                         1.5)
@@ -354,6 +419,8 @@ class HGPforecaster:
                             self.priors["hy_b_%s" %group],
                             0.005,
                             shape = self.g['train']['groups_n'][group])
+                    elif self.piecewise_out:
+                        pass
                     elif np.any(self.changepoints):
                         if self.likelihood == 'poisson':
                             # Priors for hyperparamters
@@ -479,10 +546,9 @@ class HGPforecaster:
                         shape = self.g['train']['groups_n'][group])
 
                     # Parameters periodic kernel
-                    self.priors["l_p_%s" %group] = pm.Gamma(
+                    self.priors["l_p_%s" %group] = pm.HalfNormal(
                         'l_p_%s' %group, 
-                        2, 
-                        1, 
+                        0.5,
                         shape = self.g['train']['groups_n'][group])
                     self.priors["eta_p_%s" %group] = pm.HalfNormal(
                         'eta_p_%s' %group, 
@@ -505,6 +571,8 @@ class HGPforecaster:
                             self.priors["hy_b_%s" %group],
                             0.005,
                             shape = self.g['train']['groups_n'][group])
+                    elif self.piecewise_out:
+                        pass
                     elif np.any(self.changepoints):
                         if self.partial_pool_mean:
                             if self.likelihood == 'poisson':
@@ -652,6 +720,13 @@ class HGPforecaster:
                         mu_func = LogLinear(b = self.priors["b_%s" %group][idx])
                         
                         cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx]) 
+                                + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
+                                + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
+                    elif self.piecewise_out:
+                        mu_func = pm.gp.mean.Zero()
+
+                        # cov function for the GP with specific parameters per group
+                        cov = (self.priors["eta_t_%s" %group][idx]**2 * pm.gp.cov.ExpQuad(input_dim=1, ls=self.priors["l_t_%s" %group][idx])
                                 + self.priors["eta_p_%s" %group][idx]**2 * pm.gp.cov.Periodic(1, period=self.priors["period"], ls=self.priors["l_p_%s" %group][idx]) 
                                 + pm.gp.cov.WhiteNoise(self.priors["sigma_%s" %group][idx]))
 
